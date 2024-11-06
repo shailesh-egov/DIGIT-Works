@@ -12,6 +12,7 @@ import org.egov.config.AttendanceServiceConfiguration;
 import org.egov.repository.ServiceRequestRepository;
 import org.egov.tracer.model.CustomException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.client.HttpClientErrorException;
@@ -19,6 +20,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -35,6 +37,7 @@ public class IndividualServiceUtil {
     private AttendanceServiceConfiguration config;
 
     @Autowired
+    @Qualifier("objectMapper")
     private ObjectMapper mapper;
 
     @Autowired
@@ -93,12 +96,42 @@ public class IndividualServiceUtil {
 
     public List<Individual> getIndividualDetailsFromUserId(Long userId, RequestInfo requestInfo, String tenantId) {
         String uri = getSearchURLWithParams(multiStateInstanceUtil.getStateLevelTenant(tenantId)).toUriString();
-        IndividualSearch individualSearch = IndividualSearch.builder().userId(userId).build();
+        List<Long> userIdList = userId != null ? Collections.singletonList(userId) : null;
+        IndividualSearch individualSearch = IndividualSearch.builder().userId(userIdList).build();
         IndividualSearchRequest individualSearchRequest = IndividualSearchRequest.builder()
                 .requestInfo(requestInfo).individual(individualSearch).build();
 
         IndividualBulkResponse response = null;
         log.info("call individual search with tenantId::" + tenantId + "::user id::" + userId);
+
+        try {
+            response = restTemplate.postForObject(uri, individualSearchRequest, IndividualBulkResponse.class);
+        } catch (HttpClientErrorException | HttpServerErrorException httpClientOrServerExc) {
+            log.error("Error thrown from individual search service::" + httpClientOrServerExc.getStatusCode());
+            throw new CustomException("INDIVIDUAL_SEARCH_SERVICE_EXCEPTION", "Error thrown from individual search service::" + httpClientOrServerExc.getStatusCode());
+        }
+        if (response == null || CollectionUtils.isEmpty(response.getIndividual())) {
+            throw new CustomException("INDIVIDUAL_SEARCH_RESPONSE_IS_EMPTY", "Individuals not found");
+        }
+
+        return response.getIndividual();
+    }
+
+    /**
+     * Retrieves individual details based on the provided search criteria and request information.
+     *
+     * @param individualSearch The search criteria for retrieving individual details
+     * @param requestInfo      The request information
+     * @param tenantId         The ID of the tenant
+     * @return A list of individual details matching the search criteria
+     */
+    public List<Individual> getIndividualDetailsFromSearchCriteria(IndividualSearch individualSearch, RequestInfo requestInfo, String tenantId) {
+        String uri = getSearchURLWithParams(multiStateInstanceUtil.getStateLevelTenant(tenantId)).toUriString();
+        IndividualSearchRequest individualSearchRequest = IndividualSearchRequest.builder()
+                .requestInfo(requestInfo).individual(individualSearch).build();
+
+        IndividualBulkResponse response = null;
+        log.info("call individual search with tenantId::" + tenantId + "::indidividual search criteria::" + individualSearch.toString());
 
         try {
             response = restTemplate.postForObject(uri, individualSearchRequest, IndividualBulkResponse.class);

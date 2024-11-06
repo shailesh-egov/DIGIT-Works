@@ -7,12 +7,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.egov.common.contract.request.RequestInfo;
 import org.egov.common.producer.Producer;
 import org.egov.config.IfmsAdapterConfig;
+import org.egov.kafka.IfmsAdapterProducer;
+import org.egov.web.models.ErrorRes;
 import org.egov.web.models.jit.Beneficiary;
+import org.egov.web.models.jit.PADetails;
 import org.egov.web.models.jit.PaymentInstruction;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -24,10 +29,13 @@ public class PIUtils {
     IfmsAdapterConfig adapterConfig;
     @Autowired
     ObjectMapper objectMapper;
+    @Autowired
+    IfmsAdapterProducer ifmsAdapterProducer;
 
     public void updatePIIndex(RequestInfo requestInfo, PaymentInstruction paymentInstruction) {
         log.info("Executing PIUtils:updatePiForIndexer");
         try {
+            List<PADetails> paDetails = paymentInstruction.getPaDetails();
             PaymentInstruction pi = (PaymentInstruction) paymentInstruction;
 //            if (paymentInstruction.getIsActive().equals(false))
 //                return;
@@ -57,9 +65,12 @@ public class PIUtils {
             indexerRequest.put("RequestInfo", requestInfo);
             indexerRequest.put("paymentInstruction", piObjectNode);
             producer.push(adapterConfig.getIfmsPiEnrichmentTopic(), indexerRequest);
+            paymentInstruction.setPaDetails(paDetails);
             log.info("PI pushed to indexer kafka topic.");
         } catch (Exception e) {
             log.error("Exception occurred in : PaymentInstructionService:updatePiForIndexer " + e);
+            ErrorRes errorRes = ErrorRes.builder().message(e.getMessage()).objects(Collections.singletonList(paymentInstruction)).build();
+            ifmsAdapterProducer.push(adapterConfig.getIfixAdapterESErrorQueueTopic(), errorRes);
         }
     }
 }

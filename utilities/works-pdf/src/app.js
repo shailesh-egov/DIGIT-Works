@@ -9,6 +9,13 @@ var estimateRouter=require("./routes/estimate");
 var musterRollRouter = require("./routes/musterRolls");
 var workOrderRouter = require("./routes/workOrder");
 var groupBills = require("./routes/groupBill");
+const deviationStatementRouter = require("./routes/deviationStatement");
+const measurementBookRouter = require("./routes/measurementBook");
+const detailedEstimateRouter = require("./routes/detailedEstimate");
+const rateAnalysisStatement = require("./routes/analysisStatement")
+const rateAnalysisUtilization = require("./routes/utilizationStatement")
+
+
 
 // var {listenConsumer} = require("./consumer")
 
@@ -32,6 +39,12 @@ app.use(config.app.contextPath + "/download/estimate", estimateRouter);
 app.use(config.app.contextPath + "/download/musterRoll", musterRollRouter);
 app.use(config.app.contextPath + "/download/workOrder", workOrderRouter);
 app.use(config.app.contextPath + "/bill", groupBills);
+app.use(config.app.contextPath + "/download/deviationStatement", deviationStatementRouter);
+app.use(config.app.contextPath + "/download/measurementBook", measurementBookRouter);
+app.use(config.app.contextPath + "/download/detailedEstimate", detailedEstimateRouter);
+app.use(config.app.contextPath + "/download/analysisStatement", rateAnalysisStatement);
+app.use(config.app.contextPath + "/download/utilizationStatement", rateAnalysisUtilization);
+
 
 
 // catch 404 and forward to error handler

@@ -52,10 +52,9 @@ public class AttendanceServiceValidator {
         log.info("Attendance registers referenceId and ServiceCode are validated");
 
         String tenantId = attendanceRegisters.get(0).getTenantId();
-        String rootTenantId = tenantId.split("\\.")[0];
 
         //Get MDMS data using create attendance register request and tenantId
-        Object mdmsData = mdmsUtils.mDMSCall(requestInfo, rootTenantId);
+        Object mdmsData = mdmsUtils.mDMSCall(requestInfo, tenantId);
         validateMDMSData(attendanceRegisters, mdmsData, errorMap);
         log.info("Request data validated with MDMS");
 
@@ -108,10 +107,9 @@ public class AttendanceServiceValidator {
         }
 
         String tenantId = attendanceRegisters.get(0).getTenantId();
-        String rootTenantId = tenantId.split("\\.")[0];
 
         //Get MDMS data using create attendance register request and tenantId
-        Object mdmsData = mdmsUtils.mDMSCall(requestInfo, rootTenantId);
+        Object mdmsData = mdmsUtils.mDMSCall(requestInfo, tenantId);
         validateMDMSData(attendanceRegisters, mdmsData, errorMap);
         log.info("Request data validated with MDMS");
 
@@ -120,7 +118,7 @@ public class AttendanceServiceValidator {
     }
 
     /* Validates attendance register data in update request against attendance register data fetched from database */
-    public void validateUpdateAgainstDB(AttendanceRegisterRequest attendanceRegisterRequest, List<AttendanceRegister> attendanceRegistersFromDB) {
+    public void validateUpdateAgainstDB(AttendanceRegisterRequest attendanceRegisterRequest, List<AttendanceRegister> attendanceRegistersFromDB, Boolean registerFirstStaffInsertEnabled) {
         if (CollectionUtils.isEmpty(attendanceRegistersFromDB)) {
             log.error("The record that you are trying to update does not exists in the system");
             throw new CustomException("INVALID_REGISTER_MODIFY", "The record that you are trying to update does not exists in the system");
@@ -142,7 +140,7 @@ public class AttendanceServiceValidator {
                     log.error("The user " + attendanceRegisterRequest.getRequestInfo().getUserInfo().getUuid() + " does not have permission to modify the register " + registerFromDB.getId());
                     throw new CustomException("INVALID_REGISTER_MODIFY", "The user " + attendanceRegisterRequest.getRequestInfo().getUserInfo().getUuid() + " does not have permission to modify the register " + registerFromDB.getId());
                 }
-            } else {
+            } else if(registerFirstStaffInsertEnabled) {
                 log.error("The user " + attendanceRegisterRequest.getRequestInfo().getUserInfo().getUuid() + " does not have permission to modify the register " + registerFromDB.getId());
                 throw new CustomException("INVALID_REGISTER_MODIFY", "The user " + attendanceRegisterRequest.getRequestInfo().getUserInfo().getUuid() + " does not have permission to modify the register " + registerFromDB.getId());
             }
