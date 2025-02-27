@@ -3,17 +3,23 @@ package org.egov.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
-import digit.models.coremodels.AuditDetails;
-import digit.models.coremodels.RequestInfoWrapper;
+import org.egov.common.contract.models.AuditDetails;
+import org.egov.common.contract.models.RequestInfoWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.egov.common.contract.request.RequestInfo;
+import org.egov.common.models.individual.Individual;
+import org.egov.common.models.individual.IndividualBulkResponse;
+import org.egov.common.models.individual.IndividualSearch;
+import org.egov.common.models.individual.IndividualSearchRequest;
 import org.egov.config.MusterRollServiceConfiguration;
 import org.egov.tracer.model.CustomException;
 import org.egov.util.MdmsUtil;
 import org.egov.util.MusterRollServiceUtil;
 import org.egov.web.models.*;
+import org.egov.works.services.common.models.bankaccounts.*;
+import org.egov.works.services.common.models.musterroll.Status;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -108,7 +114,6 @@ public class CalculationService {
         //Add all absentee individualIds as well
         individualIds.addAll(absenteesList.stream().map(entry-> entry.getIndividualId()).collect(Collectors.toSet()));
         List<Individual> individuals = fetchIndividualDetails(individualIds, musterRollRequest.getRequestInfo(),musterRoll.getTenantId(),musterRoll);
-        List<BankAccount> bankAccounts = fetchBankaccountDetails(individualIds, musterRollRequest.getRequestInfo(),musterRoll.getTenantId());
 
         for (Map.Entry<String,List<LocalDateTime>> entry : individualExitAttendanceMap.entrySet()) {
             IndividualEntry individualEntry = new IndividualEntry();
@@ -191,30 +196,37 @@ public class CalculationService {
             individualEntries.add(individualEntry);
         }
 
-        // Loop through and set individual and bank account details
-		for (IndividualEntry entry : individualEntries) {
+        if(config.isAddBankAccountDetails()) {
+            List<BankAccount> bankAccounts = fetchBankaccountDetails(individualIds, musterRollRequest.getRequestInfo(),musterRoll.getTenantId());
+            if (bankAccounts == null) {
+                log.error("Bank account service returned null response for muster roll: {}", musterRoll.getId());
+                bankAccounts = new ArrayList<>();
+            }
+            // Loop through and set individual and bank account details
+            for (IndividualEntry entry : individualEntries) {
 
-			// Set individual details in additionalDetails
-			if (!CollectionUtils.isEmpty(individuals) /* && !CollectionUtils.isEmpty(bankAccounts) */) {
-				Individual individual = individuals.stream()
-						.filter(ind -> ind.getId().equalsIgnoreCase(entry.getIndividualId())).findFirst()
-						.orElse(null);
-				BankAccount bankAccount = bankAccounts.stream()
-						.filter(account -> account.getReferenceId().equalsIgnoreCase(entry.getIndividualId()))
-						.findFirst().orElse(null);
+                // Set individual details in additionalDetails
+                if (!CollectionUtils.isEmpty(individuals)) {
+                    Individual individual = individuals.stream()
+                            .filter(ind -> ind.getId().equalsIgnoreCase(entry.getIndividualId())).findFirst()
+                            .orElse(null);
+                    BankAccount bankAccount = bankAccounts.stream()
+                            .filter(account -> account.getReferenceId().equalsIgnoreCase(entry.getIndividualId()))
+                            .findFirst().orElse(null);
 
-				if (individual != null /* && bankAccount != null */) {
-					setAdditionalDetails(entry, individualEntriesFromRequest, mdmsV2Data, individual,
-							bankAccount, isCreate);
-				} else {
-					log.info(
-							"CalculationService::createAttendance::No match found in individual and bank account service for the individual id from attendance log - "
-									+ entry.getIndividualId());
-				}
+                    if (individual != null) {
+                        setAdditionalDetails(entry, individualEntriesFromRequest, mdmsV2Data, individual,
+                                bankAccount, isCreate);
+                    } else {
+                        log.info(
+                                "CalculationService::createAttendance::No match found in individual and bank account service for the individual id from attendance log - "
+                                        + entry.getIndividualId());
+                    }
 
-			}
-		}
-       
+                }
+            }
+        }
+
         musterRoll.setIndividualEntries(individualEntries);
         log.debug("CalculationService::createAttendance::Individuals::size::"+musterRoll.getIndividualEntries().size());
 
@@ -244,7 +256,7 @@ public class CalculationService {
         return absentees;
     }
 
-    private void getAllAttendees(MusterRoll musterRoll,AttendanceRegister register,Set<String> attendeesWithLogs,List<IndividualEntry> absentees) {
+    private void getAllAttendees(MusterRoll musterRoll, AttendanceRegister register, Set<String> attendeesWithLogs, List<IndividualEntry> absentees) {
         List<IndividualEntry> entries = register.getAttendees();
         Set<String> allAttendees = null;
 
@@ -361,7 +373,7 @@ public class CalculationService {
      * @param musterRollRequest
      * @return List<AttendanceLog>
      */
-    private List<AttendanceLog> fetchAttendanceLogsAndHours(MusterRollRequest musterRollRequest,Object mdmsData) {
+    private List<AttendanceLog> fetchAttendanceLogsAndHours(MusterRollRequest musterRollRequest, Object mdmsData) {
 
         //fetch the attendance log
         List<AttendanceLog> attendanceLogList = getAttendanceLogs(musterRollRequest.getMusterRoll(),musterRollRequest.getRequestInfo());
@@ -413,7 +425,7 @@ public class CalculationService {
                 .queryParam("registerId",musterRoll.getRegisterId())
                 .queryParam("fromTime",fromTime)
                 .queryParam("toTime",toTime)
-                .queryParam("status",Status.ACTIVE);
+                .queryParam("status", Status.ACTIVE);
         RequestInfoWrapper requestInfoWrapper = RequestInfoWrapper.builder().requestInfo(requestInfo).build();
         AttendanceLogResponse attendanceLogResponse = null;
 

@@ -33,33 +33,39 @@ import static org.egov.util.AttendanceServiceConstants.TWO_SESSIONS;
 @Slf4j
 public class ProjectStaffUtil {
 
-    @Autowired
-    private AttendanceServiceConfiguration config;
+    private final AttendanceServiceConfiguration config;
+
+    private final RegisterRepository registerRepository;
+
+    private final ServiceRequestClient serviceRequestClient;
+
+    private final IndividualServiceUtil individualServiceUtil;
+
+    private final AttendanceRegisterService attendanceRegisterService;
+
+    private final StaffService staffService;
+
+    private final HRMSUtil hrmsUtil;
+
+    private final AttendeeService attendeeService;
+
+    private final ObjectMapper mapper;
+
+    private final ProjectServiceUtil projectServiceUtil;
 
     @Autowired
-    private RegisterRepository registerRepository;
-
-    @Autowired
-    private ServiceRequestClient serviceRequestClient;
-
-    @Autowired
-    private IndividualServiceUtil individualServiceUtil;
-
-    @Autowired
-    private AttendanceRegisterService attendanceRegisterService;
-
-    @Autowired
-    private StaffService staffService;
-
-    @Autowired
-    private HRMSUtil hrmsUtil;
-
-    @Autowired
-    private AttendeeService attendeeService;
-
-    @Autowired
-    @Qualifier("objectMapper")
-    private ObjectMapper mapper;
+    public ProjectStaffUtil(AttendanceServiceConfiguration config, RegisterRepository registerRepository, ServiceRequestClient serviceRequestClient, IndividualServiceUtil individualServiceUtil, AttendanceRegisterService attendanceRegisterService, StaffService staffService, HRMSUtil hrmsUtil, AttendeeService attendeeService, ProjectServiceUtil projectServiceUtil, @Qualifier("objectMapper") ObjectMapper mapper) {
+        this.config = config;
+        this.registerRepository = registerRepository;
+        this.serviceRequestClient = serviceRequestClient;
+        this.individualServiceUtil = individualServiceUtil;
+        this.attendanceRegisterService = attendanceRegisterService;
+        this.staffService = staffService;
+        this.hrmsUtil = hrmsUtil;
+        this.attendeeService = attendeeService;
+        this.mapper = mapper;
+        this.projectServiceUtil = projectServiceUtil;
+    }
 
     /**
      * Creates a registry for a supervisor based on the provided project staff, request info, and individual.
@@ -78,7 +84,8 @@ public class ProjectStaffUtil {
 
         // Get the project details
         Project projectsearch = Project.builder().id(projectStaff.getProjectId()).tenantId(tenantId).build();
-        List<Project> projectList = getProject(tenantId,projectsearch,requestInfo);
+        // Fetching projects without including descendants
+        List<Project> projectList = projectServiceUtil.getProject(tenantId,projectsearch,requestInfo,false, false);
         if(projectList.isEmpty())
             throw new CustomException("INVALID_PROJECT_ID","No Project found for the given project ID - "+projectStaff.getProjectId());
 
@@ -124,6 +131,8 @@ public class ProjectStaffUtil {
             throw new CustomException("UNABLE_TO_CREATE_ADDITIONAL_DETAILS_OBJECT", "Unable to create Additional Details Object ");
         }
 
+        String localityCode = project.getAddress().getBoundary();
+
         // Create an attendance register for the project
         AttendanceRegister attendanceRegister = AttendanceRegister.builder().tenantId(tenantId)
                 .name(project.getName())
@@ -132,6 +141,7 @@ public class ProjectStaffUtil {
                 .startDate(BigDecimal.valueOf(project.getStartDate()))
                 .endDate(BigDecimal.valueOf(project.getEndDate()))
                 .additionalDetails(additionalDetailsNode)
+                .localityCode(localityCode)
                 .status(Status.ACTIVE)
                 .build();
         AttendanceRegisterRequest request = AttendanceRegisterRequest.builder().attendanceRegister(Collections.singletonList(attendanceRegister)).requestInfo(requestInfo).build();
@@ -207,23 +217,6 @@ public class ProjectStaffUtil {
     /**
      * Gets the Employee for the given list of uuids and tenantId of employees
      * @param tenantId
-     * @param project
-     * @param requestInfo
-     * @return
-     */
-    public List<Project> getProject(String tenantId, Project project, RequestInfo requestInfo){
-
-        StringBuilder url = getProjectURL(tenantId);
-        ProjectRequest projectRequest = ProjectRequest.builder().projects(Collections.singletonList(project)).requestInfo(requestInfo).build();
-        ProjectResponse projectResponse = serviceRequestClient.fetchResult(url,projectRequest,ProjectResponse.class);
-
-        return projectResponse.getProject();
-
-    }
-
-    /**
-     * Gets the Employee for the given list of uuids and tenantId of employees
-     * @param tenantId
      * @param projectStaffSearch
      * @param requestInfo
      * @return
@@ -255,7 +248,6 @@ public class ProjectStaffUtil {
         return registerIdVsProjectId;
     }
 
-
     /**
      * Builds Project Staff search URL
      * @param tenantId
@@ -265,19 +257,6 @@ public class ProjectStaffUtil {
     {
         StringBuilder builder = new StringBuilder(config.getProjectHost());
         builder.append(config.getProjectStaffSearchEndpoint()).append(LIMIT_OFFSET);
-        builder.append("&tenantId=").append(tenantId);
-        return builder;
-    }
-
-    /**
-     * Builds Project search URL
-     * @param tenantId
-     * @return URL
-     */
-    public StringBuilder getProjectURL(String tenantId)
-    {
-        StringBuilder builder = new StringBuilder(config.getProjectHost());
-        builder.append(config.getProjectSearchEndpoint()).append(LIMIT_OFFSET);
         builder.append("&tenantId=").append(tenantId);
         return builder;
     }

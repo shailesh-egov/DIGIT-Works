@@ -17,6 +17,7 @@ import org.egov.util.ProjectStaffUtil;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -29,20 +30,25 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
+@ConditionalOnProperty(name = "project.staff.attendance.register.enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
 public class ProjectStaffConsumer {
 
-    @Autowired
-    private  ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
+
+    private final ProjectStaffUtil projectStaffUtil;
+
+    private final IndividualServiceUtil individualServiceUtil;
+
+    private final AttendanceServiceConfiguration config;
 
     @Autowired
-    private ProjectStaffUtil projectStaffUtil;
-
-    @Autowired
-    private IndividualServiceUtil individualServiceUtil;
-
-    @Autowired
-    private AttendanceServiceConfiguration config;
+    public ProjectStaffConsumer(ObjectMapper objectMapper, ProjectStaffUtil projectStaffUtil, IndividualServiceUtil individualServiceUtil, AttendanceServiceConfiguration config) {
+        this.objectMapper = objectMapper;
+        this.projectStaffUtil = projectStaffUtil;
+        this.individualServiceUtil = individualServiceUtil;
+        this.config = config;
+    }
 
     @KafkaListener(topics = "${project.staff.attendance.topic}")
     public void bulkStaffCreate(Map<String, Object> consumerRecord,

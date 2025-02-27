@@ -103,6 +103,13 @@ public class Configuration {
 	@Value("${egov.mdms.search.endpoint}")
 	private String mdmsEndPoint;
 
+	//MDMS V2
+	@Value("${egov.mdms.v2.host}")
+	private String mdmsV2Host;
+
+	@Value("${egov.mdms.v2.search.endpoint}")
+	private String mdmsV2EndPoint;
+
 	// HRMS
 	@Value("${egov.hrms.host}")
 	private String hrmsHost;
@@ -167,4 +174,14 @@ public class Configuration {
 
 	@Value("${works.individual.endpoint}")
 	private String individualServiceEndpoint;
+
+	@Value("${is.health.context.enabled}")
+	private boolean isHealthContextEnabled;
+
+	@Value("${bill.persistence.breakdown.enabled:true}")
+	private boolean isBillBreakdownEnabled;
+
+	@Value("${bill.persistence.breakdown.size:200}")
+	private Integer billBreakdownSize;
+
 }

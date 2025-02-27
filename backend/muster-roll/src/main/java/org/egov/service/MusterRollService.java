@@ -2,7 +2,7 @@ package org.egov.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import digit.models.coremodels.RequestInfoWrapper;
+import org.egov.common.contract.models.RequestInfoWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -24,7 +24,7 @@ import org.egov.web.models.MusterRoll;
 import org.egov.web.models.MusterRollRequest;
 import org.egov.web.models.MusterRollResponse;
 import org.egov.web.models.MusterRollSearchCriteria;
-import org.egov.web.models.Status;
+import org.egov.works.services.common.models.musterroll.Status;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -39,6 +39,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.egov.util.MusterRollServiceConstants.ACTION_APPROVE;
 import static org.egov.util.MusterRollServiceConstants.STATUS_APPROVED;
 
 @Service
@@ -126,7 +127,11 @@ public class MusterRollService {
         checkMusterRollExists(musterRollRequest.getMusterRoll());
         enrichmentService.enrichMusterRollOnCreate(musterRollRequest);
         calculationService.createAttendance(musterRollRequest,true);
-        workflowService.updateWorkflowStatus(musterRollRequest);
+        if(config.isMusterRollWorkflowEnabled()) {
+            workflowService.updateWorkflowStatus(musterRollRequest);
+        } else {
+            musterRollRequest.getMusterRoll().setMusterRollStatus(config.getMusterRollNoWorkflowCreateStatus());
+        }
 
         musterRollProducer.push(serviceConfiguration.getSaveMusterRollTopic(), musterRollRequest);
         return musterRollRequest;
@@ -161,7 +166,7 @@ public class MusterRollService {
         }
 
         List<MusterRoll> musterRollList = musterRollRepository.getMusterRoll(searchCriteria,registerIds);
-        int count = !CollectionUtils.isEmpty(musterRollList) ? musterRollList.size() : 0;
+        int count = musterRollRepository.getMusterRollCount(searchCriteria,registerIds);
         List<MusterRoll> filteredMusterRollList = musterRollList;
 
         //apply the limit and offset
@@ -210,7 +215,21 @@ public class MusterRollService {
             musterRollValidator.isValidUser(existingMusterRoll, requestInfo);
             calculationService.updateAttendance(musterRollRequest,mdmsData);
         }
-        workflowService.updateWorkflowStatus(musterRollRequest);
+        if(config.isMusterRollWorkflowEnabled()) {
+            workflowService.updateWorkflowStatus(musterRollRequest);
+        }
+        if(config.isUpdateAttendanceRegisterReviewStatusEnabled() && STATUS_APPROVED.equalsIgnoreCase(musterRollRequest.getMusterRoll().getMusterRollStatus())) {
+            AttendanceRegisterResponse attendanceRegisterResponse = musterRollServiceUtil
+                    .fetchAttendanceRegister(musterRollRequest.getMusterRoll(), musterRollRequest.getRequestInfo());
+            List<AttendanceRegister> attendanceRegisters = attendanceRegisterResponse.getAttendanceRegister();
+            if(attendanceRegisters == null || attendanceRegisters.isEmpty()) {
+                log.error("No attendance registers found to update the status for muster roll ID: {}", musterRollRequest.getMusterRoll().getId());
+                throw new CustomException("ATTENDANCE_REGISTER_NOT_FOUND", "No attendance registers found to update the status for the given muster roll");
+            }
+            AttendanceRegister attendanceRegister = attendanceRegisters.get(0);
+            attendanceRegister.setReviewStatus(STATUS_APPROVED);
+            musterRollServiceUtil.updateAttendanceRegister(attendanceRegister, musterRollRequest.getRequestInfo());
+        }
         musterRollProducer.push(serviceConfiguration.getUpdateMusterRollTopic(), musterRollRequest);
 
         try {
@@ -270,7 +289,7 @@ public class MusterRollService {
      * @return
      */
     private boolean isComputeAttendance (MusterRoll musterRoll) {
-       if (musterRoll.getAdditionalDetails() != null) {
+       if (config.isRecomputeAttendanceEnabled() && musterRoll.getAdditionalDetails() != null) {
            try {
                JsonNode node = mapper.readTree(mapper.writeValueAsString(musterRoll.getAdditionalDetails()));
                if (node.findValue(COMPUTE_ATTENDENSE) != null && StringUtils.isNotBlank(node.findValue(COMPUTE_ATTENDENSE).textValue())) {

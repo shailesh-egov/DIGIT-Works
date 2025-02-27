@@ -42,7 +42,7 @@ public class MdmsUtil {
     public Object mDMSCall(MusterRollRequest request, String tenantId) {
         RequestInfo requestInfo = request.getRequestInfo();
         MdmsCriteriaReq mdmsCriteriaReq = getMDMSRequest(requestInfo, tenantId);
-        return serviceRequestRepository.fetchResult(getMdmsSearchUrl(), mdmsCriteriaReq);
+        return serviceRequestRepository.fetchResult(getMdmsV2SearchUrl(), mdmsCriteriaReq);
     }
 
     /**
@@ -55,7 +55,7 @@ public class MdmsUtil {
     public Object mDMSCallMuster(MusterRollRequest request, String tenantId) {
         RequestInfo requestInfo = request.getRequestInfo();
         MdmsCriteriaReq mdmsCriteriaReq = getMDMSRequestMuster(requestInfo, tenantId);
-        return serviceRequestRepository.fetchResult(getMdmsSearchUrl(), mdmsCriteriaReq);
+        return serviceRequestRepository.fetchResult(getMdmsV2SearchUrl(), mdmsCriteriaReq);
     }
 
     public Object mDMSV2CallMuster(MusterRollRequest request, String tenantId) {
@@ -75,6 +75,7 @@ public class MdmsUtil {
         return MdmsCriteriaReq.builder().mdmsCriteria(mdmsCriteria)
                 .requestInfo(requestInfo).build();
     }
+
 
     /**
      * Returns mdms search criteria based on the tenantId

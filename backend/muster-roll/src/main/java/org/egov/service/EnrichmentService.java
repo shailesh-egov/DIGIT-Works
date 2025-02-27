@@ -2,18 +2,19 @@ package org.egov.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import digit.models.coremodels.AuditDetails;
-import digit.models.coremodels.IdResponse;
+import org.egov.common.contract.models.AuditDetails;
+import org.egov.common.contract.idgen.IdResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.egov.common.contract.models.Workflow;
 import org.egov.common.contract.request.RequestInfo;
 import org.egov.config.MusterRollServiceConfiguration;
 import org.egov.repository.IdGenRepository;
-import org.egov.repository.MusterRollRepository;
 import org.egov.tracer.model.CustomException;
-import org.egov.util.MdmsUtil;
 import org.egov.util.MusterRollServiceUtil;
 import org.egov.web.models.*;
+import org.egov.works.services.common.models.expense.Pagination;
+import org.egov.works.services.common.models.musterroll.Status;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -21,6 +22,7 @@ import org.springframework.util.CollectionUtils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -118,39 +120,37 @@ public class EnrichmentService {
         MusterRoll musterRoll = musterRollRequest.getMusterRoll();
         Workflow workflow = musterRollRequest.getWorkflow();
 
-        log.info("EnrichmentService::enrichMusterRollOnUpdate::Workflow action is "+workflow.getAction());
+        //update totalAttendance and skill details if modified
+        List<IndividualEntry> individualEntries = existingMusterRoll.getIndividualEntries();
+        List<IndividualEntry> modifiedIndividualEntries = musterRoll.getIndividualEntries();
+        if (!CollectionUtils.isEmpty(modifiedIndividualEntries)) {
+            Map<String, IndividualEntry> modifiedEntriesMap = modifiedIndividualEntries.stream()
+                    .filter(entry -> entry.getId() != null)
+                    .collect(Collectors.toMap(IndividualEntry::getId, entry -> entry));
 
-
-            //update totalAttendance and skill details if modified
-            List<IndividualEntry> individualEntries = existingMusterRoll.getIndividualEntries();
-            List<IndividualEntry> modifiedIndividualEntries = musterRoll.getIndividualEntries();
-            if (!CollectionUtils.isEmpty(modifiedIndividualEntries)) {
-                for (IndividualEntry individualEntry : individualEntries) {
-                    for (IndividualEntry modifiedIndividualEntry : modifiedIndividualEntries)  {
-                        if (modifiedIndividualEntry.getId().equalsIgnoreCase(individualEntry.getId())) {
-                            //update the total attendance
-                            if (modifiedIndividualEntry.getModifiedTotalAttendance() != null) {
-                                individualEntry.setModifiedTotalAttendance(modifiedIndividualEntry.getModifiedTotalAttendance());
+            for (IndividualEntry individualEntry : individualEntries) {
+                if (individualEntry.getId() != null && modifiedEntriesMap.containsKey(individualEntry.getId())) {
+                    IndividualEntry modifiedIndividualEntry = modifiedEntriesMap.get(individualEntry.getId());
+                    if (modifiedIndividualEntry.getModifiedTotalAttendance() != null) {
+                        individualEntry.setModifiedTotalAttendance(modifiedIndividualEntry.getModifiedTotalAttendance());
+                    }
+                    if (modifiedIndividualEntry.getAdditionalDetails() != null) {
+                        try {
+                            JsonNode node = mapper.readTree(mapper.writeValueAsString(modifiedIndividualEntry.getAdditionalDetails()));
+                            if (node.findValue("code") != null  && StringUtils.isNotBlank(node.findValue("code").textValue())) {
+                                String skillCode = node.findValue("code").textValue();
+                                //Update the skill value based on the code from request
+                                musterRollServiceUtil.updateAdditionalDetails(mdmsData,individualEntry,skillCode);
                             }
-                            if (modifiedIndividualEntry.getAdditionalDetails() != null) {
-                                try {
-                                    JsonNode node = mapper.readTree(mapper.writeValueAsString(modifiedIndividualEntry.getAdditionalDetails()));
-                                    if (node.findValue("code") != null  && StringUtils.isNotBlank(node.findValue("code").textValue())) {
-                                        String skillCode = node.findValue("code").textValue();
-                                        //Update the skill value based on the code from request
-                                        musterRollServiceUtil.updateAdditionalDetails(mdmsData,individualEntry,skillCode);
-                                    }
-                                } catch (IOException e) {
-                                    log.info("EnrichmentService::enrichMusterRollOnUpdate::Failed to parse additionalDetail object from request"+e);
-                                    throw new CustomException("PARSING ERROR", "Failed to parse additionalDetail object from request on update");
-                                }
-
-                            }
-                            break;
+                        } catch (IOException e) {
+                            log.info("EnrichmentService::enrichMusterRollOnUpdate::Failed to parse additionalDetail object from request"+e);
+                            throw new CustomException("PARSING ERROR", "Failed to parse additionalDetail object from request on update");
                         }
+
                     }
                 }
             }
+        }
 
         musterRoll = existingMusterRoll;
         musterRollRequest.setMusterRoll(existingMusterRoll);
@@ -163,7 +163,8 @@ public class EnrichmentService {
         //populate auditDetails in IndividualEntry and AttendanceEntry
         populateAuditDetailsIndividualEntry(musterRoll);
 
-        if (workflow.getAction().equals(ACTION_REJECT)) {
+        if (config.isMusterRollWorkflowEnabled() && workflow.getAction().equals(ACTION_REJECT)) {
+            log.info("EnrichmentService::enrichMusterRollOnUpdate::Workflow action is "+ workflow.getAction());
             enrichUpdateMusterWorkFlowForActionReject(musterRollRequest);
         }
 
@@ -181,7 +182,7 @@ public class EnrichmentService {
         if (auditDetails != null && StringUtils.isNotBlank(auditDetails.getCreatedBy())) {
             List<String> updatedAssignees = new ArrayList<>();
             updatedAssignees.add(auditDetails.getCreatedBy());
-            workflow.setAssignees(updatedAssignees);
+            workflow.setAssignes(updatedAssignees);
         }
     }
 
@@ -201,6 +202,11 @@ public class EnrichmentService {
         if (searchCriteria.getLimit() != null && searchCriteria.getLimit() > config.getMusterMaxLimit())
             searchCriteria.setLimit(config.getMusterMaxLimit());
 
+        if (searchCriteria.getSortBy() == null)
+            searchCriteria.setSortBy("createdTime");
+
+        if (searchCriteria.getOrder() == null)
+            searchCriteria.setOrder(Pagination.OrderEnum.DESC);
     }
 
     /**

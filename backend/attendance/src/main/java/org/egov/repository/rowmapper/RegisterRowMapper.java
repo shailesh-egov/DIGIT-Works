@@ -25,9 +25,12 @@ import java.util.Map;
 @Component
 public class RegisterRowMapper implements ResultSetExtractor<List<AttendanceRegister>> {
 
+    private final ObjectMapper mapper;
+
     @Autowired
-    @Qualifier("objectMapper")
-    private ObjectMapper mapper;
+    public RegisterRowMapper(@Qualifier("objectMapper") ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
 
     @Override
     public List<AttendanceRegister> extractData(ResultSet rs) throws SQLException, DataAccessException {
@@ -48,6 +51,8 @@ public class RegisterRowMapper implements ResultSetExtractor<List<AttendanceRegi
             Long lastmodifiedtime = rs.getLong("lastmodifiedtime");
             String referenceId = rs.getString("referenceid");
             String serviceCode = rs.getString("servicecode");
+            String localityCode = rs.getString("localitycode");
+            String reviewstatus = rs.getString("reviewstatus");
 
             AuditDetails auditDetails = AuditDetails.builder().createdBy(createdby).createdTime(createdtime)
                     .lastModifiedBy(lastmodifiedby).lastModifiedTime(lastmodifiedtime)
@@ -67,6 +72,8 @@ public class RegisterRowMapper implements ResultSetExtractor<List<AttendanceRegi
                     .startDate(startDate)
                     .endDate(endDate)
                     .auditDetails(auditDetails)
+                    .localityCode(localityCode)
+                    .reviewStatus(reviewstatus)
                     .build();
 
             if (!attendanceRegisterMap.containsKey(id)) {

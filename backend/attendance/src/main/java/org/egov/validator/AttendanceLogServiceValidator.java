@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.egov.common.contract.request.RequestInfo;
 import org.egov.config.AttendanceServiceConfiguration;
+import org.egov.util.HRMSUtil;
 import org.egov.util.IndividualServiceUtil;
 import org.egov.web.models.AttendeeSearchCriteria;
 import org.egov.web.models.AttendanceLogSearchCriteria;
@@ -27,23 +28,27 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AttendanceLogServiceValidator {
 
-    @Autowired
-    private StaffRepository attendanceStaffRepository;
+    private final StaffRepository attendanceStaffRepository;
+
+    private final RegisterRepository attendanceRegisterRepository;
+
+    private final AttendeeRepository attendanceAttendeeRepository;
+
+    private final AttendanceLogRepository attendanceLogRepository;
+
+    private final AttendanceServiceConfiguration config;
+
+    private final IndividualServiceUtil individualServiceUtil;
 
     @Autowired
-    private RegisterRepository attendanceRegisterRepository;
-
-    @Autowired
-    private AttendeeRepository attendanceAttendeeRepository;
-
-    @Autowired
-    private AttendanceLogRepository attendanceLogRepository;
-
-    @Autowired
-    private AttendanceServiceConfiguration config;
-
-    @Autowired
-    private IndividualServiceUtil individualServiceUtil;
+    public AttendanceLogServiceValidator(StaffRepository attendanceStaffRepository, RegisterRepository attendanceRegisterRepository, AttendeeRepository attendanceAttendeeRepository, AttendanceLogRepository attendanceLogRepository, AttendanceServiceConfiguration config, IndividualServiceUtil individualServiceUtil, AttendanceServiceConfiguration attendanceServiceConfiguration) {
+        this.attendanceStaffRepository = attendanceStaffRepository;
+        this.attendanceRegisterRepository = attendanceRegisterRepository;
+        this.attendanceAttendeeRepository = attendanceAttendeeRepository;
+        this.attendanceLogRepository = attendanceLogRepository;
+        this.config = config;
+        this.individualServiceUtil = individualServiceUtil;
+    }
 
     public void validateCreateAttendanceLogRequest(AttendanceLogRequest attendanceLogRequest) {
         log.info("Validate attendance log create request");
@@ -354,7 +359,11 @@ public class AttendanceLogServiceValidator {
         String userUUID = attendanceLogRequest.getRequestInfo().getUserInfo().getUuid();
         String registerId = attendanceLogRequest.getAttendance().get(0).getRegisterId();
         String individualId = individualServiceUtil.getIndividualDetailsFromUserId(attendanceLogRequest.getRequestInfo().getUserInfo().getId(), attendanceLogRequest.getRequestInfo(), attendanceLogRequest.getAttendance().get(0).getTenantId()).get(0).getId();
-        validateLoggedInUser(individualId, registerId);
+
+        //Get the logged-in user roles
+        Set<String> userRoles = HRMSUtil.getUserRoleCodes(attendanceLogRequest.getRequestInfo());
+
+        validateLoggedInUser(individualId, registerId,userRoles);
         log.info("User ["+userUUID+"] validation is done for register ["+registerId+"]");
     }
 
@@ -379,7 +388,9 @@ public class AttendanceLogServiceValidator {
             // Verify the Logged-in user is associated to the given register.
             String individualId = individualServiceUtil.getIndividualDetailsFromUserId(requestInfoWrapper.getRequestInfo().getUserInfo().getId(), requestInfoWrapper.getRequestInfo(), searchCriteria.getTenantId()).get(0).getId();
 
-            validateLoggedInUser(individualId, searchCriteria.getRegisterId());
+            //Get the logged-in user roles
+            Set<String> userRoles = HRMSUtil.getUserRoleCodes(requestInfoWrapper.getRequestInfo());
+            validateLoggedInUser(individualId, searchCriteria.getRegisterId(),userRoles);
         }
         log.info("Attendance log search request validated successfully");
     }
@@ -415,7 +426,17 @@ public class AttendanceLogServiceValidator {
 
 
 
-    private void validateLoggedInUser(String userUUID, String registerId) {
+    private void validateLoggedInUser(String userUUID, String registerId, Set<String> userRoles) {
+        if(config.isLogOpenSearchEnabled()) {
+            log.debug("Open search is enabled, checking user roles");
+            //Get the roles enabled for open serach
+            Set<String> openSearchEnabledRoles  = HRMSUtil.getRegisterOpenSearchEnabledRoles(config.getRegisterOpenSearchEnabledRoles());
+            if(HRMSUtil.isUserEnabledForOpenSearch(userRoles,openSearchEnabledRoles)) {
+                log.info("User {} is enabled for open search with roles {}", userUUID, userRoles);
+                return;
+            }
+            log.debug("User {} is not enabled for open search, falling back to staff validation", userUUID);
+        }
         StaffSearchCriteria searchCriteria = StaffSearchCriteria
                 .builder()
                 .individualIds(Collections.singletonList(userUUID))

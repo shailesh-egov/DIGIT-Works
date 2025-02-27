@@ -27,10 +27,16 @@ public class BillRepository {
 		this.searchBillRowMapper = searchBillRowMapper;
 	}
 
-	public List<Bill> search(BillSearchRequest billSearchRequest){
+	public List<Bill> search(BillSearchRequest billSearchRequest, boolean isValidationSearch){
 		
 		List<Object> preparedStatementValues = new ArrayList<>();
-		String queryStr = queryBuilder.getBillQuery(billSearchRequest, preparedStatementValues);
+		String queryStr = queryBuilder.getBillQuery(billSearchRequest, preparedStatementValues, false, isValidationSearch);
         return jdbcTemplate.query(queryStr, preparedStatementValues.toArray(), searchBillRowMapper);
+	}
+
+	public Integer searchCount(BillSearchRequest billSearchRequest){
+		List<Object> preparedStatementValues = new ArrayList<>();
+		String queryStr = queryBuilder.getSearchCountQueryString(billSearchRequest, preparedStatementValues);
+		return jdbcTemplate.queryForObject(queryStr, preparedStatementValues.toArray(), Integer.class);
 	}
 }
